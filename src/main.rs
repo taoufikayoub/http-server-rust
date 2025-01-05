@@ -4,8 +4,27 @@ use std::{
     str::from_utf8,
 };
 
+const ECHO_PREFIX: &str = "/echo/";
+
+fn get_response(path: &str) -> String {
+    if path == "/" {
+        return String::from("HTTP/1.1 200 OK\r\n\r\n");
+    }
+
+    if path.starts_with(ECHO_PREFIX) {
+        let param = &path[ECHO_PREFIX.len()..];
+        return format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+            param.len(),
+            param
+        );
+    }
+
+    String::from("HTTP/1.1 404 Not Found\r\n\r\n")
+}
+
 fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 1028];
+    let mut buffer = [0; 4096];
 
     match stream.read(&mut buffer) {
         Ok(n) => {
@@ -15,11 +34,7 @@ fn handle_connection(mut stream: TcpStream) {
                     if parts.len() >= 2 {
                         let path = parts[1];
 
-                        let response = if path == "/" {
-                            "HTTP/1.1 200 OK\r\n\r\n"
-                        } else {
-                            "HTTP/1.1 404 Not Found\r\n\r\n"
-                        };
+                        let response = get_response(path);
 
                         if let Err(e) = stream.write(response.as_bytes()) {
                             eprintln!("Failed to send response: {}", e);
