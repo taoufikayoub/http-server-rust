@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    env,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     str::from_utf8,
@@ -7,11 +8,14 @@ use std::{
 use thread_pool_server::ThreadPool;
 
 const ECHO_PREFIX: &str = "/echo/";
+const FILE_PREFIX: &str = "/files/";
+
 type Headers = HashMap<String, String>;
 
-fn get_response_with_body_str(body: String) -> String {
+fn get_response_with_body_str(body: String, content_type: Option<&str>) -> String {
     format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
+        content_type.unwrap_or("text/plain"),
         body.len(),
         body
     )
@@ -38,13 +42,30 @@ fn get_response(path: &str, headers: &Headers) -> String {
         "/" => String::from("HTTP/1.1 200 OK\r\n\r\n"),
 
         "/user-agent" => match headers.get("user-agent") {
-            Some(user_agent) => get_response_with_body_str(user_agent.to_string()),
+            Some(user_agent) => get_response_with_body_str(user_agent.to_string(), None),
             None => String::from("HTTP/1.1 400 Bad Request\r\n\r\n"),
         },
 
         path if path.starts_with(ECHO_PREFIX) => {
             let param = &path[ECHO_PREFIX.len()..];
-            get_response_with_body_str(param.to_string())
+            get_response_with_body_str(param.to_string(), None)
+        }
+
+        path if path.starts_with(FILE_PREFIX) => {
+            let file_name = &path[FILE_PREFIX.len()..];
+            let env_args: Vec<String> = env::args().collect();
+            let default_dir = String::from("/tmp/");
+            let dir = env_args.get(2).unwrap_or(&default_dir);
+            let file_path = format!("{}{}", dir, file_name);
+            println!("file_path: {}", file_path);
+            let file_content = match std::fs::read_to_string(file_path) {
+                Ok(content) => content,
+                Err(_) => return String::from("HTTP/1.1 404 Not Found\r\n\r\n"),
+            };
+
+            println!("file_content: {}", file_content);
+
+            get_response_with_body_str(file_content, Some("application/octet-stream"))
         }
 
         _ => String::from("HTTP/1.1 404 Not Found\r\n\r\n"),

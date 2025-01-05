@@ -4,6 +4,7 @@ use std::{
 };
 
 pub struct ThreadPool {
+    #[allow(dead_code)]
     workers: Vec<Worker>,
     sender: mpsc::Sender<Job>,
 }
@@ -36,6 +37,7 @@ impl ThreadPool {
     }
 }
 
+#[allow(dead_code)]
 struct Worker {
     id: usize,
     thread: thread::JoinHandle<()>,
