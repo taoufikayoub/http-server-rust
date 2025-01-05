@@ -1,10 +1,35 @@
 use std::{
-    io::Write,
+    io::{Read, Write},
     net::{TcpListener, TcpStream},
+    str::from_utf8,
 };
 
 fn handle_connection(mut stream: TcpStream) {
-    stream.write(b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
+    let mut buffer = [0; 1028];
+
+    match stream.read(&mut buffer) {
+        Ok(n) => {
+            if let Ok(request) = from_utf8(&buffer[..n]) {
+                if let Some(request_line) = request.lines().next() {
+                    let parts: Vec<&str> = request_line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        let path = parts[1];
+
+                        let response = if path == "/" {
+                            "HTTP/1.1 200 OK\r\n\r\n"
+                        } else {
+                            "HTTP/1.1 404 Not Found\r\n\r\n"
+                        };
+
+                        if let Err(e) = stream.write(response.as_bytes()) {
+                            eprintln!("Failed to send response: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => eprintln!("Failed to read from connection: {}", e),
+    }
 }
 
 fn main() {
@@ -13,6 +38,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                println!("received request");
                 handle_connection(stream);
             }
             Err(e) => {
