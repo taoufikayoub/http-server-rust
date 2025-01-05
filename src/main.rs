@@ -1,26 +1,53 @@
 use std::{
+    collections::HashMap,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     str::from_utf8,
 };
 
 const ECHO_PREFIX: &str = "/echo/";
+type Headers = HashMap<String, String>;
 
-fn get_response(path: &str) -> String {
-    if path == "/" {
-        return String::from("HTTP/1.1 200 OK\r\n\r\n");
+fn get_response_with_body_str(body: String) -> String {
+    format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+        body.len(),
+        body
+    )
+}
+
+fn parse_headers(request: &str) -> Headers {
+    let mut headers = HashMap::new();
+
+    for line in request.lines().skip(1) {
+        if line.is_empty() {
+            break;
+        }
+
+        if let Some((key, value)) = line.split_once(": ") {
+            headers.insert(key.to_lowercase(), value.trim().to_string());
+        }
     }
 
-    if path.starts_with(ECHO_PREFIX) {
-        let param = &path[ECHO_PREFIX.len()..];
-        return format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-            param.len(),
-            param
-        );
-    }
+    headers
+}
 
-    String::from("HTTP/1.1 404 Not Found\r\n\r\n")
+fn get_response(path: &str, headers: &Headers) -> String {
+    match path {
+        "/" => String::from("HTTP/1.1 200 OK\r\n\r\n"),
+
+        "/user-agent" => match headers.get("user-agent") {
+            Some(user_agent) => get_response_with_body_str(user_agent.to_string()),
+            None => String::from("HTTP/1.1 400 Bad Request\r\n\r\n"),
+        },
+
+        path if path.starts_with(ECHO_PREFIX) => {
+            let param = &path[ECHO_PREFIX.len()..];
+            get_response_with_body_str(param.to_string())
+        }
+
+        _ => String::from("HTTP/1.1 404 Not Found\r\n\r\n"),
+    }
 }
 
 fn handle_connection(mut stream: TcpStream) {
@@ -34,7 +61,9 @@ fn handle_connection(mut stream: TcpStream) {
                     if parts.len() >= 2 {
                         let path = parts[1];
 
-                        let response = get_response(path);
+                        let headers = parse_headers(request);
+
+                        let response = get_response(path, &headers);
 
                         if let Err(e) = stream.write(response.as_bytes()) {
                             eprintln!("Failed to send response: {}", e);
