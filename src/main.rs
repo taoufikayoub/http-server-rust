@@ -4,6 +4,7 @@ use std::{
     net::{TcpListener, TcpStream},
     str::from_utf8,
 };
+use thread_pool_server::ThreadPool;
 
 const ECHO_PREFIX: &str = "/echo/";
 type Headers = HashMap<String, String>;
@@ -78,12 +79,15 @@ fn handle_connection(mut stream: TcpStream) {
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+    let pool = ThreadPool::new(4);
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 println!("received request");
-                handle_connection(stream);
+                pool.execute(|| {
+                    handle_connection(stream);
+                });
             }
             Err(e) => {
                 println!("error: {}", e);
