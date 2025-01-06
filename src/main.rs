@@ -34,6 +34,19 @@ fn get_response(request: HttpRequest) -> String {
             get_response_with_body_str(param.to_string(), None)
         }
 
+        path if path.starts_with(FILE_PREFIX) && request.method == "POST" => {
+            let file_name = &path[FILE_PREFIX.len()..];
+            let env_args: Vec<String> = env::args().collect();
+            let default_dir = String::from("./tmp/");
+            let dir = env_args.get(2).unwrap_or(&default_dir);
+            let file_path = format!("{}{}", dir, file_name);
+            let file_content = request.body.unwrap_or_default();
+            match std::fs::write(file_path, file_content) {
+                Ok(_) => String::from("HTTP/1.1 201 Created\r\n\r\n"),
+                Err(_) => String::from("HTTP/1.1 500 Internal Server Error\r\n\r\n"),
+            }
+        }
+
         path if path.starts_with(FILE_PREFIX) => {
             let file_name = &path[FILE_PREFIX.len()..];
             let env_args: Vec<String> = env::args().collect();
