@@ -1,5 +1,6 @@
+mod http_parser;
+use http_parser::HttpRequest;
 use std::{
-    collections::HashMap,
     env,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
@@ -10,8 +11,6 @@ use thread_pool_server::ThreadPool;
 const ECHO_PREFIX: &str = "/echo/";
 const FILE_PREFIX: &str = "/files/";
 
-type Headers = HashMap<String, String>;
-
 fn get_response_with_body_str(body: String, content_type: Option<&str>) -> String {
     format!(
         "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
@@ -21,27 +20,11 @@ fn get_response_with_body_str(body: String, content_type: Option<&str>) -> Strin
     )
 }
 
-fn parse_headers(request: &str) -> Headers {
-    let mut headers = HashMap::new();
-
-    for line in request.lines().skip(1) {
-        if line.is_empty() {
-            break;
-        }
-
-        if let Some((key, value)) = line.split_once(": ") {
-            headers.insert(key.to_lowercase(), value.trim().to_string());
-        }
-    }
-
-    headers
-}
-
-fn get_response(path: &str, headers: &Headers) -> String {
-    match path {
+fn get_response(request: HttpRequest) -> String {
+    match request.path.as_str() {
         "/" => String::from("HTTP/1.1 200 OK\r\n\r\n"),
 
-        "/user-agent" => match headers.get("user-agent") {
+        "/user-agent" => match request.headers.get("user-agent") {
             Some(user_agent) => get_response_with_body_str(user_agent.to_string(), None),
             None => String::from("HTTP/1.1 400 Bad Request\r\n\r\n"),
         },
@@ -77,20 +60,15 @@ fn handle_connection(mut stream: TcpStream) {
 
     match stream.read(&mut buffer) {
         Ok(n) => {
-            if let Ok(request) = from_utf8(&buffer[..n]) {
-                if let Some(request_line) = request.lines().next() {
-                    let parts: Vec<&str> = request_line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        let path = parts[1];
-
-                        let headers = parse_headers(request);
-
-                        let response = get_response(path, &headers);
-
+            if let Ok(request_str) = from_utf8(&buffer[..n]) {
+                match HttpRequest::parse(request_str) {
+                    Ok(request) => {
+                        let response = get_response(request);
                         if let Err(e) = stream.write(response.as_bytes()) {
                             eprintln!("Failed to send response: {}", e);
                         }
                     }
+                    Err(e) => eprintln!("Failed to parse request: {:?}", e),
                 }
             }
         }
