@@ -12,7 +12,7 @@ const ECHO_PREFIX: &str = "/echo/";
 const FILE_PREFIX: &str = "/files/";
 
 fn get_response(request: &HttpRequest) -> HttpResponse {
-    match request.path.as_str() {
+    let mut response = match request.path.as_str() {
         "/" => HttpResponse::ok(),
 
         "/user-agent" => match request.headers.get("user-agent") {
@@ -61,7 +61,13 @@ fn get_response(request: &HttpRequest) -> HttpResponse {
         }
 
         _ => HttpResponse::not_found(),
+    };
+
+    if request.headers.get("accept-encoding") == Some(&"gzip".to_string()) {
+        response.add_header("Content-Encoding", "gzip");
     }
+
+    response
 }
 
 fn handle_connection(mut stream: TcpStream) {
