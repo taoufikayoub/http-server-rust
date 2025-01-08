@@ -1,4 +1,7 @@
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::collections::HashMap;
+use std::io::Write;
 
 #[derive(Debug)]
 pub struct HttpRequest {
@@ -100,11 +103,18 @@ impl StatusCode {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ContentEncoding {
+    Identity,
+    Gzip,
+}
+
 #[derive(Debug)]
 pub struct HttpResponse {
     status: StatusCode,
     headers: HashMap<String, String>,
     body: Option<Vec<u8>>,
+    encoding: ContentEncoding,
 }
 
 impl HttpResponse {
@@ -113,6 +123,7 @@ impl HttpResponse {
             status,
             headers: HashMap::new(),
             body: None,
+            encoding: ContentEncoding::Identity,
         }
     }
 
@@ -127,8 +138,6 @@ impl HttpResponse {
     }
 
     pub fn set_body(&mut self, body: Vec<u8>) {
-        self.headers
-            .insert("Content-Length".to_string(), body.len().to_string());
         self.body = Some(body);
     }
 
@@ -141,21 +150,36 @@ impl HttpResponse {
         self.headers.insert(key.to_string(), value.to_string());
     }
 
+    pub fn set_accepted_encoding(&mut self, accept_encoding: Option<&str>) {
+        if let Some(encodings) = accept_encoding {
+            if encodings.split(',').any(|e| e.trim() == "gzip") {
+                self.encoding = ContentEncoding::Gzip;
+                self.add_header("Content-Encoding", "gzip");
+            }
+        }
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
+        let body_bytes = match (self.encoding, &self.body) {
+            (ContentEncoding::Gzip, Some(body)) => {
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                encoder.write_all(body).unwrap();
+                encoder.finish().unwrap()
+            }
+            (_, body_opt) => body_opt.clone().unwrap_or_default(),
+        };
+
         let mut response = format!("HTTP/1.1 {}\r\n", self.status.as_str());
 
         for (key, value) in &self.headers {
             response.push_str(&format!("{}: {}\r\n", key, value));
         }
 
+        response.push_str(&format!("Content-Length: {}\r\n", body_bytes.len()));
         response.push_str("\r\n");
 
         let mut response_bytes = response.into_bytes();
-
-        if let Some(body) = &self.body {
-            response_bytes.extend(body);
-        }
-
+        response_bytes.extend(body_bytes);
         response_bytes
     }
 }
