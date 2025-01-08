@@ -63,8 +63,11 @@ fn get_response(request: &HttpRequest) -> HttpResponse {
         _ => HttpResponse::not_found(),
     };
 
-    if request.headers.get("accept-encoding") == Some(&"gzip".to_string()) {
-        response.add_header("Content-Encoding", "gzip");
+    if let Some(accept_encoding) = request.headers.get("accept-encoding") {
+        let encodings: Vec<&str> = accept_encoding.split(',').map(|s| s.trim()).collect();
+        if encodings.contains(&"gzip") {
+            response.add_header("Content-Encoding", "gzip");
+        }
     }
 
     response
